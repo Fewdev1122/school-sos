@@ -161,29 +161,75 @@ Return ONLY the JSON object. No markdown, no code fences.`;
     }
 
     // Post-processing: override AI when it misses obvious fields
-    const finalType = INCIDENT_TYPES.includes(parsed.incident_type as any)
-      ? parsed.incident_type
-      : smartClassify(normalizedText);
+    // 1. Type — smartClassify overrides if AI got it wrong
+    const finalType = smartClassifyWithAI(normalizedText, parsed.incident_type);
 
-    // Fix reporter name if AI missed it
+    // 2. Location — smart extraction always preferred when text has location keywords
+    let finalLocation = parsed.location || 'ไม่ระบุ';
+    const smartLoc = smartExtractLocation(normalizedText);
+    if (smartLoc) {
+      // Always use smart location when available (it's keyword-based and more reliable than AI)
+      finalLocation = smartLoc;
+    }
+
+    // 3. Reporter name — validate and fix if AI produced garbage
     let finalReporter = parsed.reporter_name || 'ไม่ระบุ';
-    if (finalReporter === 'ไม่ระบุ' || finalReporter === 'ไม่ระบุ') {
+    // If AI returned "ไม่ระบุ" OR the name looks suspicious (too long, contains verbs), use smart extraction
+    if (
+      finalReporter === 'ไม่ระบุ' ||
+      finalReporter === '' ||
+      finalReporter.length > 18 ||
+      /แจ้ง|รายงาน|โทร|ภายใน|เวลา|วันที่|เกิด|เหตุ/.test(finalReporter)
+    ) {
       const smartReporter = smartExtractReporter(normalizedText);
       if (smartReporter) finalReporter = smartReporter;
     }
+    // Final cleanup: strip trailing verbs/adverbs, and re-validate
+    finalReporter = finalReporter.replace(/\s+$/, '').trim();
+    // If after cleanup the name contains verbs, use simpler fallback
+    if (/แจ้ง|โทร|เห็น|บอก/.test(finalReporter)) {
+      finalReporter = 'ไม่ระบุ';
+      const fallback = normalizedText.match(/(?:ครู|คุณครู|คุณ|นาย|นาง|นางสาว)[\u0E00-\u0E7F]{2,6}(?:\s[\u0E00-\u0E7F]{2,6})?/);
+      if (fallback && !/แจ้ง|โทร|เห็น|บอก/.test(fallback[0])) {
+        finalReporter = fallback[0];
+      }
+    }
 
-    // Pick the max severity between AI and smart rules
+    // 4. Title — clean up: strip leading time/date and truncate if needed
+    let finalTitle = parsed.title || normalizedText.slice(0, 60);
+    // Strip leading time like "20:00" or "10:45"
+    finalTitle = finalTitle.replace(/^\d{2}:\d{2}/, '').trim();
+    // Strip leading "น." (abbreviation leftover after time removal)
+    finalTitle = finalTitle.replace(/^น\.\s*/, '').trim();
+    // Strip leading date/time patterns like "เมื่อวันที่..."
+    finalTitle = finalTitle.replace(/^(เมื่อ|เมื่อวันที่|วันที่|วันนี้|เมื่อตอน)\s*[^ก-ฮ]{0,30}?\s*/i, '').trim();
+    // If title is still too long, truncate
+    if (finalTitle.length > 60) {
+      finalTitle = finalTitle.slice(0, 57) + '...';
+    }
+    finalTitle = finalTitle.slice(0, 100);
+
+    // 5. Priority — pick the max severity between AI and smart rules
     const PRIO_ORDER: Record<string, number> = { 'LOW': 0, 'MEDIUM': 1, 'HIGH': 2, 'CRITICAL': 3 };
-    const aiPrio = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'].includes(parsed.priority) ? parsed.priority : 'MEDIUM';
+    let aiParsedPrio = (parsed.priority || '').toUpperCase();
+    const aiPrio = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'].includes(aiParsedPrio) ? aiParsedPrio : 'MEDIUM';
     const smartPrio = smartPriority(normalizedText);
     const finalPriority = PRIO_ORDER[smartPrio] > PRIO_ORDER[aiPrio] ? smartPrio : aiPrio;
 
+    // 6. Contact — extract phone number if AI missed it or returned 'ไม่ระบุ'
+    let finalContact = parsed.reporter_contact || 'ไม่ระบุ';
+    const phone = normalizedText.match(/0[0-9\- ]{7,12}/);
+    if (phone) {
+      const cleaned = phone[0].trim();
+      if (cleaned.length >= 9 && cleaned.length <= 12) finalContact = cleaned;
+    }
+
     const result = {
-      title: (parsed.title || normalizedText.slice(0, 80) + '...').slice(0, 100),
+      title: finalTitle,
       description: normalizedText,
-      location: parsed.location || 'ไม่ระบุ',
+      location: finalLocation,
       reporter_name: finalReporter,
-      reporter_contact: parsed.reporter_contact || 'ไม่ระบุ',
+      reporter_contact: finalContact,
       incident_type: finalType,
       priority: finalPriority,
     };
@@ -193,6 +239,49 @@ Return ONLY the JSON object. No markdown, no code fences.`;
     return handleError(c, error);
   }
 });
+
+// smartClassify but respects AI's answer when it's confidently correct
+function smartClassifyWithAI(text: string, aiType: string): string {
+  if (INCIDENT_TYPES.includes(aiType as any)) {
+    const smart = smartClassify(text);
+    // Prefer smart classification when keywords are explicit
+    if (smart !== 'เหตุร้ายแรงอื่นๆ') return smart;
+    return aiType;
+  }
+  return smartClassify(text);
+}
+
+// Smart location extraction: override AI when it returns "ไม่ระบุ"
+function smartExtractLocation(text: string): string | null {
+  const t = text;
+
+  // "ภายใน XXX" pattern (most specific) — uses manual stopword trimming for reliable behavior
+  const inside = t.match(/ภายใน\s*([^\s,\.]+(?:\s+[^\s,\.]+){0,5})/);
+  if (inside) {
+    let loc = inside[1].trim();
+    const stopWords = ['เจ้าหน้าที่', 'มี', 'ไม่มี', 'และ', 'โดย', 'ได้', 'เพื่อ', 'ซึ่ง', 'แต่'];
+    for (const sw of stopWords) {
+      const idx = loc.indexOf(sw);
+      if (idx > 0) { loc = loc.substring(0, idx).trim(); break; }
+    }
+    if (loc.length > 2) return loc;
+  }
+
+  // Building + room/number
+  const building = t.match(/(?:อาคาร|ตึก)\s*\d+/);
+  const floor = t.match(/ชั้น\s*\d+/);
+  const room = t.match(/ห้อง[^\s,\.]{2,20}/);
+  if (room && building) return room[0] + ' ' + building[0];
+  if (room) return room[0];
+  if (building) return building[0];
+  if (floor) return floor[0];
+
+  // Generic area keyword + following word
+  const area = t.match(/(?:บริเวณ|สนาม|หน้า|หลัง|ข้าง)\s*[^\s,\.]{2,15}/);
+  if (area) return area[0];
+
+  return null;
+}
 
 // Smart post-classification as a safety net when AI gets the type wrong
 function smartClassify(text: string): string {
@@ -209,15 +298,69 @@ function smartClassify(text: string): string {
 }
 
 function smartExtractReporter(text: string): string | null {
-  // Grab title + next few Thai chars (greedy, but better than nothing)
-  const match = text.match(/(?:ครู|คุณครู|คุณ|นาย|นาง|นางสาว|เด็กชาย|เด็กหญิง)[\u0E00-\u0E7F]{2,8}/);
-  return match ? match[0] : null;
+  // Stop words: break name at these
+  const STOP = ['แจ้ง', 'โทร', 'เห็น', 'รายงาน', 'บอก', 'อยู่', 'เข้า', 'ออก'];
+
+  // Trim name at the EARLIEST stop word (smallest index), return only the prefix
+  function trimAtStop(raw: string): string | null {
+    let bestIdx = -1;
+    let bestSw = '';
+    for (const sw of STOP) {
+      const idx = raw.indexOf(sw);
+      if (idx >= 2 && (bestIdx === -1 || idx < bestIdx)) {
+        bestIdx = idx;
+        bestSw = sw;
+      }
+    }
+    if (bestIdx >= 2) {
+      const candidate = raw.substring(0, bestIdx).trim();
+      const thaiCount = (candidate.match(/[\u0E00-\u0E7F]/g) || []).length;
+      if (thaiCount >= 2 && thaiCount <= 12) return candidate;
+    }
+    // No stop word found: validate the whole string
+    const thaiCount = (raw.match(/[\u0E00-\u0E7F]/g) || []).length;
+    if (thaiCount >= 2 && thaiCount <= 12) return raw;
+    return null;
+  }
+
+  // Pattern 1: Title prefix (most reliable)
+  const m1 = text.match(/(?:ครู|คุณครู|คุณ|นาย|นาง|นางสาว|เด็กชาย|เด็กหญิง)[\u0E00-\u0E7F]{2,12}(?:\s[\u0E00-\u0E7F]{2,6})?/);
+  if (m1) {
+    const result = trimAtStop(m1[0].trim());
+    if (result) return result;
+  }
+
+  // Pattern 2: Name before แจ้ง/รายงาน/โทร (preceded by whitespace)
+  const m2 = text.match(/(?:^|[\s])([\u0E00-\u0E7F]{2,8})\s*(?:แจ้ง|รายงาน|โทร)/);
+  if (m2) {
+    const result = trimAtStop(m2[1].trim());
+    if (result && result.length >= 2) return result;
+  }
+
+  // Pattern 3: Name after keywords
+  const m3 = text.match(/(?<=แจ้ง|รายงาน)\s*(?:โดย\s*)?([\u0E00-\u0E7F]{4,15})/);
+  if (m3) {
+    const result = trimAtStop(m3[1].trim());
+    if (result && result.length >= 2) return result;
+  }
+
+  return null;
 }
 
 function smartPriority(text: string): string {
   const t = text.toLowerCase();
-  if (t.includes('เสียชีวิต') || t.includes('สาหัส') || t.includes('วิกฤต') || t.includes('หมดสติ') || t.includes('ช็อค') || t.includes('แผ่นดินไหว') || t.includes('สึนามิ')) return 'CRITICAL';
-  if (t.includes('บาดเจ็บ') || t.includes('ไฟไหม้') || t.includes('น้ำท่วม') || t.includes('เลือด') || t.includes('หัก') || t.includes('รุนแรง') || t.includes('วิ่งหนี') || t.includes('สู้')) return 'HIGH';
+  
+  // Exceptions: explicit "no fatalities" → cap at HIGH even if other critical keywords match
+  const hasNoFatalities = t.includes('ไม่มีผู้เสียชีวิต') || t.includes('ไม่เสียชีวิต') || t.includes('ปลอดภัย');
+  
+  // CRITICAL indicators
+  if (!hasNoFatalities) {
+    if (t.includes('เสียชีวิต') || t.includes('สาหัส') || t.includes('วิกฤต') || t.includes('หมดสติ') || t.includes('ช็อค') || t.includes('แผ่นดินไหว') || t.includes('สึนามิ') || t.includes('หายนะ')) return 'CRITICAL';
+  }
+  
+  // HIGH indicators
+  if (t.includes('บาดเจ็บ') || t.includes('ไฟไหม้') || t.includes('เพลิง') || t.includes('น้ำท่วม') || t.includes('เลือด') || t.includes('หัก') || t.includes('รุนแรง') || t.includes('วิ่งหนี') || t.includes('สู้') || t.includes('สูดดม') || t.includes('ควัน') || t.includes('อพยพ') || t.includes('สาหัส')) return 'HIGH';
+  
   if (t.includes('ทะเลาะ') || t.includes('สบาย') || t.includes('เล็กน้อย')) return 'MEDIUM';
   return 'MEDIUM';
 }
