@@ -1,2 +1,0 @@
-# Proxy API requests to the Workers backend
-/api/*  https://school-sos-backend.phumiphatasunee478.workers.dev/api/:splat  200
