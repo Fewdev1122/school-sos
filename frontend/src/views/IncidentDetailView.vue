@@ -38,15 +38,13 @@ async function loadImages() {
 }
 
 // ── Flow state (only one section open at a time) ──
-const activeAction = ref<string | null>(null); // 'assign' | 'priority' | 'status' | 'note' | 'resolve' | null
+const activeAction = ref<string | null>(null); // 'assign' | 'status' | 'resolve' | null
 const submitting = ref(false);
 
 // ── Form fields ──
 const assignName = ref('');
 const selectedPriority = ref<IncidentPriority>('MEDIUM');
 const selectedStatus = ref<IncidentStatus>('NEW');
-const noteAuthor = ref('');
-const noteContent = ref('');
 const resolveBy = ref('');
 const resolveNote = ref('');
 const formError = ref('');
@@ -61,10 +59,8 @@ interface FlowStep {
 }
 
 const flowSteps: FlowStep[] = [
-  { key: 'assign', label: 'มอบหมาย', icon: 'mdi-account-plus', color: 'primary', doneIcon: 'mdi-account-check' },
-  { key: 'priority', label: 'ความรุนแรง', icon: 'mdi-flag', color: 'orange', doneIcon: 'mdi-flag-check' },
+  { key: 'assign', label: 'รับเรื่อง', icon: 'mdi-account-plus', color: 'primary', doneIcon: 'mdi-account-check' },
   { key: 'status', label: 'สถานะ', icon: 'mdi-swap-horizontal', color: 'warning', doneIcon: 'mdi-check-circle' },
-  { key: 'note', label: 'บันทึก', icon: 'mdi-note-plus', color: 'info', doneIcon: 'mdi-note-text' },
   { key: 'resolve', label: 'ปิดเหตุ', icon: 'mdi-check-circle', color: 'success', doneIcon: 'mdi-check-all' },
 ];
 
@@ -73,10 +69,7 @@ const completedSteps = computed(() => {
   const done = new Set<string>();
   if (!incident.value) return done;
   if (incident.value.assigned_to) done.add('assign');
-  // priority is always set, so track if it changed from default
-  // status tracks if it's been moved past NEW
   if (incident.value.status !== 'NEW') done.add('status');
-  if (incident.value.timeline?.some(t => t.action === 'NOTE_ADDED')) done.add('note');
   if (isResolved.value) done.add('resolve');
   return done;
 });
@@ -99,8 +92,10 @@ function toggleAction(key: string) {
   formError.value = '';
 
   // Pre-fill form fields
-  if (key === 'assign') assignName.value = incident.value?.assigned_to || '';
-  if (key === 'priority') selectedPriority.value = (incident.value?.priority as IncidentPriority) || 'MEDIUM';
+  if (key === 'assign') {
+    assignName.value = incident.value?.assigned_to || '';
+    selectedPriority.value = (incident.value?.priority as IncidentPriority) || 'MEDIUM';
+  }
   if (key === 'status') {
     const transitions: Record<string, IncidentStatus[]> = {
       NEW: ['ACKNOWLEDGED'], ACKNOWLEDGED: ['NEW', 'IN_PROGRESS'],
@@ -116,17 +111,10 @@ async function handleAssign() {
   if (!assignName.value.trim()) { formError.value = 'กรุณากรอกชื่อ'; return; }
   submitting.value = true; formError.value = '';
   try {
-    await store.updateIncident(incidentId.value, { assigned_to: assignName.value.trim() });
-    await store.fetchIncident(incidentId.value);
-    activeAction.value = null;
-  } catch { /* handled */ }
-  submitting.value = false;
-}
-
-async function handlePriority() {
-  submitting.value = true;
-  try {
-    await store.updateIncident(incidentId.value, { priority: selectedPriority.value });
+    await store.updateIncident(incidentId.value, {
+      assigned_to: assignName.value.trim(),
+      priority: selectedPriority.value,
+    });
     await store.fetchIncident(incidentId.value);
     activeAction.value = null;
   } catch { /* handled */ }
@@ -141,18 +129,6 @@ async function handleStatus() {
     await store.fetchIncident(incidentId.value);
     if (selectedStatus.value === 'RESOLVED') activeAction.value = 'resolve';
     else activeAction.value = null;
-  } catch { /* handled */ }
-  submitting.value = false;
-}
-
-async function handleNote() {
-  if (!noteContent.value.trim()) { formError.value = 'กรุณากรอกข้อความ'; return; }
-  if (!noteAuthor.value.trim()) { formError.value = 'กรุณากรอกชื่อผู้บันทึก'; return; }
-  submitting.value = true; formError.value = '';
-  try {
-    await store.addNote(incidentId.value, { content: noteContent.value.trim(), author: noteAuthor.value.trim() });
-    noteContent.value = ''; noteAuthor.value = '';
-    activeAction.value = null;
   } catch { /* handled */ }
   submitting.value = false;
 }
@@ -312,31 +288,25 @@ onMounted(() => {
           </v-btn>
         </div>
 
-        <!-- ── Assign Panel ── -->
+        <!-- ── Assign + Priority Panel ── -->
         <v-expand-transition>
           <div v-if="activeAction === 'assign'" class="mt-2 pa-3 bg-grey-lighten-4 rounded">
-            <div class="d-flex ga-2">
-              <v-text-field v-model="assignName" label="ชื่อผู้รับผิดชอบ" placeholder="ชื่อ-นามสกุล"
+            <div class="text-body-2 font-weight-medium mb-2">มอบหมายผู้รับผิดชอบและกำหนดความรุนแรง</div>
+            <div class="d-flex ga-2 mb-2">
+              <v-text-field v-model="assignName" label="ชื่อผู้รับผิดชอบ *" placeholder="ชื่อ-นามสกุล"
                 variant="outlined" density="compact" hide-details class="flex-grow-1" autofocus
                 :error-messages="activeAction === 'assign' ? formError : ''"
                 @keyup.enter="handleAssign" />
-              <v-btn color="primary" variant="elevated" @click="handleAssign" :loading="submitting" class="mt-1">ยืนยัน</v-btn>
             </div>
-          </div>
-        </v-expand-transition>
-
-        <!-- ── Priority Panel ── -->
-        <v-expand-transition>
-          <div v-if="activeAction === 'priority'" class="mt-2 pa-3 bg-grey-lighten-4 rounded">
-            <div class="d-flex ga-2 align-center">
+            <div class="d-flex ga-2 align-center mb-2">
               <span class="text-body-2 mr-2">ระดับความรุนแรง:</span>
               <v-btn-toggle v-model="selectedPriority" color="orange" mandatory density="compact" variant="outlined" divided>
                 <v-btn v-for="p in priorityItems" :key="p.value" :value="p.value" size="small">
                   {{ p.label }}
                 </v-btn>
               </v-btn-toggle>
-              <v-btn color="primary" variant="elevated" @click="handlePriority" :loading="submitting" size="small">ยืนยัน</v-btn>
             </div>
+            <v-btn color="primary" variant="elevated" @click="handleAssign" :loading="submitting">ยืนยัน</v-btn>
           </div>
         </v-expand-transition>
 
@@ -351,20 +321,6 @@ onMounted(() => {
                 </v-btn>
               </v-btn-toggle>
               <v-btn color="primary" variant="elevated" @click="handleStatus" :loading="submitting" size="small">ยืนยัน</v-btn>
-            </div>
-          </div>
-        </v-expand-transition>
-
-        <!-- ── Note Panel ── -->
-        <v-expand-transition>
-          <div v-if="activeAction === 'note'" class="mt-2 pa-3 bg-grey-lighten-4 rounded">
-            <v-text-field v-model="noteAuthor" label="ชื่อผู้บันทึก *" placeholder="ชื่อ-นามสกุล"
-              variant="outlined" density="compact" hide-details class="mb-2" />
-            <div class="d-flex ga-2">
-              <v-textarea v-model="noteContent" label="ข้อความ *" placeholder="รายละเอียดการดำเนินงาน..."
-                variant="outlined" density="compact" rows="2" hide-details class="flex-grow-1"
-                :error-messages="activeAction === 'note' ? formError : ''" />
-              <v-btn color="primary" variant="elevated" @click="handleNote" :loading="submitting" class="mt-1">บันทึก</v-btn>
             </div>
           </div>
         </v-expand-transition>
