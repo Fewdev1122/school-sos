@@ -149,6 +149,25 @@ export const useIncidentStore = defineStore('incidents', () => {
     }
   }
 
+  async function deleteIncident(id: string): Promise<boolean> {
+    submitting.value = true;
+    error.value = null;
+    try {
+      await api.deleteIncident(id);
+      // Remove from local list
+      incidents.value = incidents.value.filter((i) => i.id !== id);
+      total.value = Math.max(0, total.value - 1);
+      addToast('ลบเหตุสำเร็จ', 'success');
+      return true;
+    } catch (e: any) {
+      error.value = e.message;
+      addToast(e.message, 'error');
+      return false;
+    } finally {
+      submitting.value = false;
+    }
+  }
+
   async function resolveIncident(id: string, data: ResolveIncidentData) {
     submitting.value = true;
     error.value = null;
@@ -191,6 +210,7 @@ export const useIncidentStore = defineStore('incidents', () => {
     createIncident,
     updateIncident,
     addNote,
+    deleteIncident,
     resolveIncident,
   };
 });

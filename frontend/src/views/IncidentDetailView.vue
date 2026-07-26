@@ -211,6 +211,20 @@ const canResolve = computed(() => {
   return incident.value.status !== 'RESOLVED';
 });
 
+const showDeleteDialog = ref(false);
+
+async function handleDelete() {
+  const ok = await store.deleteIncident(incidentId.value);
+  if (ok) {
+    showDeleteDialog.value = false;
+    router.push('/dashboard');
+  }
+}
+
+function openDeleteDialog() {
+  showDeleteDialog.value = true;
+}
+
 const isResolved = computed(() => {
   return incident.value?.status === 'RESOLVED';
 });
@@ -347,6 +361,16 @@ onMounted(() => {
               >
                 <v-icon start>mdi-check-circle</v-icon>
                 ปิดเหตุ
+              </v-btn>
+              <v-btn
+                v-if="isResolved"
+                size="small"
+                variant="outlined"
+                color="error"
+                @click="openDeleteDialog"
+              >
+                <v-icon start>mdi-delete</v-icon>
+                ลบเหตุ
               </v-btn>
             </div>
           </v-card>
@@ -543,6 +567,32 @@ onMounted(() => {
           <v-btn variant="text" @click="showResolveDialog = false">ยกเลิก</v-btn>
           <v-spacer />
           <v-btn color="success" variant="elevated" @click="handleResolve" :loading="store.submitting">ยืนยันการปิดเหตุ</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Delete Confirm Dialog -->
+    <v-dialog v-model="showDeleteDialog" max-width="480">
+      <v-card class="pa-4">
+        <v-card-title class="text-subtitle-1 font-weight-bold pa-0 mb-3">
+          <v-icon start color="error">mdi-alert</v-icon>
+          ยืนยันการลบ / Confirm Delete
+        </v-card-title>
+        <p class="text-body-2 mb-2">
+          คุณแน่ใจหรือไม่ที่จะลบเหตุ
+          <strong>"{{ incident?.title }}"</strong>?
+          การกระทำนี้ไม่สามารถย้อนกลับได้
+        </p>
+        <p class="text-caption text-grey mb-3">
+          ข้อมูลทั้งหมดรวมถึง timeline จะถูกลบออกจากระบบ
+        </p>
+        <v-card-actions class="pa-0 mt-2">
+          <v-btn variant="text" @click="showDeleteDialog = false" :disabled="store.submitting">ยกเลิก</v-btn>
+          <v-spacer />
+          <v-btn color="error" variant="elevated" @click="handleDelete" :loading="store.submitting">
+            <v-icon start>mdi-delete</v-icon>
+            ยืนยันการลบ
+          </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>

@@ -68,6 +68,12 @@ export async function addNote(id: string, data: AddNoteData): Promise<ApiRespons
   });
 }
 
+export async function deleteIncident(id: string): Promise<ApiResponse> {
+  return request(`/incidents/${id}`, {
+    method: 'DELETE',
+  });
+}
+
 export async function analyzeIncident(text: string): Promise<AnalyzeResponse> {
   return request('/analyze', {
     method: 'POST',

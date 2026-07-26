@@ -378,4 +378,37 @@ router.post('/:id/resolve', async (c) => {
   }
 });
 
+// ── DELETE /api/v1/incidents/:id ──
+router.delete('/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+
+    const existing = await c.env.DB.prepare('SELECT * FROM incidents WHERE id = ?').bind(id).first();
+    if (!existing) {
+      return c.json({ success: false, error: 'Not Found', message: 'Incident not found' }, 404);
+    }
+
+    const inc = existing as any;
+    if (inc.status !== IncidentStatus.RESOLVED) {
+      return c.json({
+        success: false,
+        error: 'Cannot Delete',
+        message: 'Only resolved incidents can be deleted',
+      }, 400);
+    }
+
+    // Delete timeline entries first (though FK cascade should handle this)
+    await c.env.DB.prepare('DELETE FROM incident_timeline WHERE incident_id = ?').bind(id).run();
+    // Delete the incident
+    await c.env.DB.prepare('DELETE FROM incidents WHERE id = ?').bind(id).run();
+
+    return c.json({
+      success: true,
+      message: 'Incident deleted successfully',
+    });
+  } catch (error) {
+    return handleError(c, error);
+  }
+});
+
 export default router;
