@@ -87,6 +87,10 @@ function goHome() {
 </template>
 
 <style>
+body, html, #app {
+  font-family: 'Kanit', sans-serif !important;
+}
+
 .toast-container {
   position: fixed;
   top: 64px;
