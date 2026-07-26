@@ -7,7 +7,7 @@ import type { AnalyzeResult, CreateIncidentData, ImageUpload } from '@/types';
 const router = useRouter();
 const store = useIncidentStore();
 
-const rawText = ref('');
+const rawText = ref('เมื่อวันที่ 26 กรกฎาคม 2569 เวลา 14:08 น. นายสมชายแจ้งเหตุ ที่โรงเรียนไฟไหม้ มีนักเรียนเสียชีวิต 100 คน บาดเจ็บ 150 คน ติดต่อสมชาย: 0973463238');
 const analyzing = ref(false);
 const analyzed = ref(false);
 const analysisResult = ref<AnalyzeResult | null>(null);
