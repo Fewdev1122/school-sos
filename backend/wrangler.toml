@@ -1,0 +1,9 @@
+name = "school-sos-backend"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "school-sos-db"
+database_id = "local-dev"
+migrations_dir = "migrations"

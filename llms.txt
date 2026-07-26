@@ -1,0 +1,76 @@
+# School SOS - LLM Context
+
+## Project Overview
+School SOS is a functional full-stack MVP for school incident reporting and management. It allows users to report incidents, track their resolution through a defined workflow, and maintain a complete timeline of actions.
+
+## Tech Stack
+- **Frontend:** Vue 3, TypeScript, Vuetify 3, Pinia, Vite
+- **Backend:** Hono (Cloudflare Workers), TypeScript, Zod
+- **Database:** Cloudflare D1 (SQLite)
+
+## Project Structure
+```
+school-sos/
+├── backend/           # Hono API (Cloudflare Workers)
+│   ├── src/
+│   │   ├── index.ts           # Entry point + routes
+│   │   ├── routes/
+│   │   │   └── incidents.ts   # Incident CRUD + resolve
+│   │   ├── types/
+│   │   │   └── index.ts       # Zod schemas + TypeScript types
+│   │   ├── db/
+│   │   │   └── schema.ts      # DB row mappers
+│   │   └── middleware/
+│   │       └── error.ts       # Error handler
+│   ├── migrations/
+│   │   └── 001_create_tables.sql
+│   ├── wrangler.toml
+│   └── package.json
+├── frontend/          # Vue 3 + Vuetify SPA
+│   ├── src/
+│   │   ├── main.ts
+│   │   ├── App.vue
+│   │   ├── router/
+│   │   ├── stores/
+│   │   ├── api/
+│   │   ├── views/             # ReportView, DashboardView, IncidentDetailView
+│   │   ├── components/
+│   │   └── types/
+│   ├── index.html
+│   ├── vite.config.ts
+│   └── package.json
+├── llms.txt
+├── README.md
+└── deploy-plan.md
+```
+
+## API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /api/health | Health check |
+| POST | /api/v1/incidents | Create incident |
+| GET | /api/v1/incidents | List incidents (filterable) |
+| GET | /api/v1/incidents/:id | Get incident detail + timeline |
+| PATCH | /api/v1/incidents/:id | Update incident (status, priority, assignee) |
+| POST | /api/v1/incidents/:id/notes | Add timeline note |
+| POST | /api/v1/incidents/:id/resolve | Resolve incident |
+
+## Status Workflow
+NEW → ACKNOWLEDGED → IN_PROGRESS → RESOLVED
+(ACKNOWLEDGED can revert to NEW, IN_PROGRESS can revert to ACKNOWLEDGED)
+
+## Frontend Routes
+- `/dashboard` - Dashboard with stats + incident list
+- `/report` - Report a new incident
+- `/incidents/:id` - Incident detail with timeline + actions
+
+## Priority Levels
+LOW, MEDIUM, HIGH, CRITICAL
+
+## Key Design Decisions
+- No authentication (P0 scope only)
+- No AI, WebSocket, GPS, PDF, multi-school features (explicitly out of scope)
+- Timeline entries auto-generated from backend on state changes
+- Closure summary auto-generated on incident resolution
+- Responsive design (mobile + desktop)
