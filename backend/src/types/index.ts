@@ -36,6 +36,12 @@ export const PRIORITY_VALUES = Object.values(IncidentPriority) as [string, ...st
 
 // ── Zod Schemas ──
 
+const ImageDataSchema = z.object({
+  filename: z.string().min(1).max(200),
+  mime_type: z.string().min(1).max(50),
+  data: z.string().min(1), // base64
+});
+
 export const CreateIncidentSchema = z.object({
   title: z.string().min(1, 'Title is required').max(200, 'Title must be at most 200 characters'),
   description: z.string().min(1, 'Description is required').max(5000, 'Description must be at most 5000 characters'),
@@ -44,6 +50,7 @@ export const CreateIncidentSchema = z.object({
   reporter_contact: z.string().min(1, 'Reporter contact is required').max(100, 'Reporter contact must be at most 100 characters'),
   incident_type: z.string().min(1, 'Incident type is required').max(100),
   priority: z.enum(PRIORITY_VALUES).optional().default(IncidentPriority.MEDIUM),
+  images: z.array(ImageDataSchema).max(5, 'สามารถใส่รูปได้สูงสุด 5 รูป').optional().default([]),
 });
 
 export const UpdateIncidentSchema = z.object({
@@ -109,6 +116,17 @@ export interface PaginatedResponse<T> extends ApiResponse<T[]> {
   total: number;
   page: number;
   limit: number;
+}
+
+// ── Images ──
+export interface IncidentImage {
+  id: string;
+  incident_id: string;
+  filename: string;
+  mime_type: string;
+  data: string; // base64
+  sort_order: number;
+  created_at: string;
 }
 
 // ── Query Params ──

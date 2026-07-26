@@ -42,6 +42,18 @@ router.post('/', async (c) => {
       .bind(crypto.randomUUID(), id, `Incident "${data.title}" was created`, data.reporter_name, now)
       .run();
 
+    // Store images
+    if (data.images && data.images.length > 0) {
+      const stmt = c.env.DB.prepare(
+        `INSERT INTO incident_images (id, incident_id, filename, mime_type, data, sort_order, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      );
+      for (let i = 0; i < data.images.length; i++) {
+        const img = data.images[i];
+        await stmt.bind(crypto.randomUUID(), id, img.filename, img.mime_type, img.data, i, now).run();
+      }
+    }
+
     const incident = await c.env.DB.prepare('SELECT * FROM incidents WHERE id = ?').bind(id).first();
     const timeline = await c.env.DB.prepare(
       'SELECT * FROM incident_timeline WHERE incident_id = ? ORDER BY created_at ASC'
@@ -287,6 +299,35 @@ router.post('/:id/notes', async (c) => {
       },
       message: 'Note added successfully',
     }, 201);
+  } catch (error) {
+    return handleError(c, error);
+  }
+});
+
+// ── GET /api/v1/incidents/:id/images ──
+router.get('/:id/images', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const images = await c.env.DB.prepare(
+      'SELECT id, incident_id, filename, mime_type, sort_order, created_at FROM incident_images WHERE incident_id = ? ORDER BY sort_order ASC'
+    ).bind(id).all();
+    return c.json({ success: true, data: images.results });
+  } catch (error) {
+    return handleError(c, error);
+  }
+});
+
+// ── GET /api/v1/incidents/:id/images/:imageId (with base64 data) ──
+router.get('/:id/images/:imageId', async (c) => {
+  try {
+    const { id, imageId } = c.req.param();
+    const image = await c.env.DB.prepare(
+      'SELECT * FROM incident_images WHERE id = ? AND incident_id = ?'
+    ).bind(imageId, id).first();
+    if (!image) {
+      return c.json({ success: false, error: 'Not Found', message: 'Image not found' }, 404);
+    }
+    return c.json({ success: true, data: image });
   } catch (error) {
     return handleError(c, error);
   }

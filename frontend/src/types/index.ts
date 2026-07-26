@@ -61,6 +61,12 @@ export interface PaginatedResponse<T> extends ApiResponse<T[]> {
   limit: number;
 }
 
+export interface ImageUpload {
+  filename: string;
+  mime_type: string;
+  data: string; // base64
+}
+
 // ── Form Data ──
 export interface CreateIncidentData {
   title: string;
@@ -70,6 +76,7 @@ export interface CreateIncidentData {
   reporter_contact: string;
   incident_type: string;
   priority?: IncidentPriority;
+  images?: ImageUpload[];
 }
 
 export interface UpdateIncidentData {
@@ -90,6 +97,17 @@ export interface AddNoteData {
 export interface ResolveIncidentData {
   resolution_notes: string;
   resolved_by: string;
+}
+
+// ── Image ──
+export interface IncidentImage {
+  id: string;
+  incident_id: string;
+  filename: string;
+  mime_type: string;
+  data?: string; // base64 (only when fetched individually)
+  sort_order: number;
+  created_at: string;
 }
 
 // ── AI Analyze ──

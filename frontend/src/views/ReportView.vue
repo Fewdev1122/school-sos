@@ -2,7 +2,7 @@
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useIncidentStore } from '@/stores/incidents';
-import type { AnalyzeResult, CreateIncidentData } from '@/types';
+import type { AnalyzeResult, CreateIncidentData, ImageUpload } from '@/types';
 
 const router = useRouter();
 const store = useIncidentStore();
@@ -12,6 +12,57 @@ const analyzing = ref(false);
 const analyzed = ref(false);
 const analysisResult = ref<AnalyzeResult | null>(null);
 const errors = ref('');
+
+// ── Image Upload ──
+const selectedImages = ref<ImageUpload[]>([]);
+const imagePreviews = ref<string[]>([]);
+const imageError = ref('');
+const fileInput = ref<HTMLInputElement | null>(null);
+const MAX_IMAGES = 5;
+
+function handleFileSelect(e: Event) {
+  const input = e.target as HTMLInputElement;
+  if (!input.files?.length) return;
+  imageError.value = '';
+
+  const remaining = MAX_IMAGES - selectedImages.value.length;
+  const toProcess = Array.from(input.files).slice(0, remaining);
+
+  if (input.files.length > remaining) {
+    imageError.value = `ใส่รูปได้สูงสุด ${MAX_IMAGES} รูป (เพิ่มได้อีก ${remaining} รูป)`;
+  }
+
+  for (const file of toProcess) {
+    if (!file.type.startsWith('image/')) {
+      imageError.value = 'รองรับเฉพาะไฟล์รูปภาพเท่านั้น';
+      continue;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      imageError.value = 'รูปภาพต้องมีขนาดไม่เกิน 5 MB';
+      continue;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result as string;
+      const dataUrl = base64.split(',')[1]; // remove data:image/...;base64, prefix
+      selectedImages.value.push({
+        filename: file.name,
+        mime_type: file.type,
+        data: dataUrl,
+      });
+      imagePreviews.value.push(base64);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  input.value = ''; // reset so same file can be re-selected
+}
+
+function removeImage(index: number) {
+  selectedImages.value.splice(index, 1);
+  imagePreviews.value.splice(index, 1);
+}
 
 const incidentTypes = [
   'อุบัติเหตุ',
@@ -63,6 +114,7 @@ async function handleApprove() {
     reporter_contact: analysisResult.value.reporter_contact,
     incident_type: analysisResult.value.incident_type,
     priority: analysisResult.value.priority,
+    images: selectedImages.value.length > 0 ? selectedImages.value : undefined,
   };
 
   try {
@@ -84,6 +136,9 @@ function handleReset() {
   analyzed.value = false;
   analysisResult.value = null;
   errors.value = '';
+  selectedImages.value = [];
+  imagePreviews.value = [];
+  imageError.value = '';
 }
 
 function updateAnalyzedField(field: keyof AnalyzeResult, value: string) {
@@ -131,6 +186,49 @@ function updateAnalyzedField(field: keyof AnalyzeResult, value: string) {
             >
               {{ errors }}
             </v-alert>
+
+            <!-- Image Upload -->
+            <v-divider class="my-2" />
+            <div class="text-body-2 font-weight-medium mb-2">
+              <v-icon start size="small">mdi-camera</v-icon>
+              รูปภาพประกอบ (สูงสุด {{ MAX_IMAGES }} รูป)
+            </div>
+
+            <div v-if="imagePreviews.length > 0" class="d-flex flex-wrap ga-2 mb-2">
+              <div v-for="(preview, idx) in imagePreviews" :key="idx" class="position-relative" style="width: 80px; height: 80px;">
+                <v-img :src="preview" cover class="rounded" style="width: 80px; height: 80px;" />
+                <v-btn
+                  size="x-small"
+                  icon="mdi-close-circle"
+                  color="error"
+                  variant="text"
+                  density="compact"
+                  class="position-absolute"
+                  style="top: -6px; right: -6px;"
+                  @click="removeImage(idx)"
+                />
+              </div>
+            </div>
+
+            <v-btn
+              v-if="selectedImages.length < MAX_IMAGES"
+              variant="outlined"
+              size="small"
+              color="grey"
+              prepend-icon="mdi-plus"
+              @click="fileInput?.click()"
+            >
+              เพิ่มรูป
+            </v-btn>
+            <input
+              ref="fileInput"
+              type="file"
+              accept="image/*"
+              multiple
+              class="d-none"
+              @change="handleFileSelect"
+            />
+            <div v-if="imageError" class="text-caption text-error mt-1">{{ imageError }}</div>
 
             <v-row class="mt-2">
               <v-col cols="6">

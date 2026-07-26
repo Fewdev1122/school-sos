@@ -3,6 +3,7 @@ import type {
   PaginatedResponse,
   AnalyzeResponse,
   Incident,
+  IncidentImage,
   CreateIncidentData,
   UpdateIncidentData,
   AddNoteData,
@@ -79,6 +80,16 @@ export async function analyzeIncident(text: string): Promise<AnalyzeResponse> {
     method: 'POST',
     body: JSON.stringify({ text }),
   });
+}
+
+// ── Images ──
+
+export async function getIncidentImages(id: string): Promise<ApiResponse<IncidentImage[]>> {
+  return request(`/incidents/${id}/images`);
+}
+
+export async function getIncidentImage(id: string, imageId: string): Promise<ApiResponse<IncidentImage>> {
+  return request(`/incidents/${id}/images/${imageId}`);
 }
 
 export async function resolveIncident(id: string, data: ResolveIncidentData): Promise<ApiResponse<Incident>> {

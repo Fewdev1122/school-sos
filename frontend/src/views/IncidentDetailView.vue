@@ -2,9 +2,11 @@
 import { onMounted, ref, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useIncidentStore } from '@/stores/incidents';
+import * as api from '@/api/client';
 import {
   IncidentStatusLabels,
   IncidentPriorityLabels,
+  type IncidentImage,
   type IncidentStatus,
   type IncidentPriority,
 } from '@/types';
@@ -16,6 +18,24 @@ const store = useIncidentStore();
 const incidentId = computed(() => route.params.id as string);
 const incident = computed(() => store.currentIncident);
 const isResolved = computed(() => incident.value?.status === 'RESOLVED');
+
+// ── Images ──
+const images = ref<IncidentImage[]>([]);
+const imagesLoading = ref(false);
+
+async function loadImages() {
+  imagesLoading.value = true;
+  try {
+    const res = await api.getIncidentImages(incidentId.value);
+    images.value = res.data || [];
+    // Fetch full data for each image
+    for (const img of images.value) {
+      const full = await api.getIncidentImage(incidentId.value, img.id);
+      img.data = full.data?.data;
+    }
+  } catch { /* ignore */ }
+  imagesLoading.value = false;
+}
 
 // ── Flow state (only one section open at a time) ──
 const activeAction = ref<string | null>(null); // 'assign' | 'priority' | 'status' | 'note' | 'resolve' | null
@@ -151,6 +171,12 @@ async function handleDelete() {
 }
 
 const showDeleteDialog = ref(false);
+
+function openImage(img: IncidentImage) {
+  if (img.data) {
+    window.open('data:' + img.mime_type + ';base64,' + img.data, '_blank');
+  }
+}
 function openDeleteDialog() { showDeleteDialog.value = true; }
 
 function goBack() { router.push('/dashboard'); }
@@ -188,7 +214,10 @@ function formatDateTime(dateStr: string): string {
   });
 }
 
-onMounted(() => store.fetchIncident(incidentId.value));
+onMounted(() => {
+  store.fetchIncident(incidentId.value);
+  loadImages();
+});
 </script>
 
 <template>
@@ -236,6 +265,25 @@ onMounted(() => store.fetchIncident(incidentId.value));
             <span v-else class="text-grey">—</span>
           </v-col>
         </v-row>
+      </v-card>
+
+      <!-- ── Images ── -->
+      <v-card v-if="images.length > 0" class="pa-3 mb-3" elevation="2">
+        <div class="text-body-2 font-weight-medium mb-2">
+          <v-icon start size="small">mdi-image-multiple</v-icon>
+          รูปภาพ ({{ images.length }})
+        </div>
+        <div class="d-flex flex-wrap ga-2">
+          <v-img
+            v-for="img in images"
+            :key="img.id"
+            :src="'data:' + img.mime_type + ';base64,' + img.data"
+            cover
+            class="rounded cursor-pointer"
+            style="width: 120px; height: 120px;"
+            @click="openImage(img)"
+          />
+        </div>
       </v-card>
 
       <!-- ── Flow Actions ── -->
