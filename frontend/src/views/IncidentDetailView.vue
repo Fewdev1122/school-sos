@@ -117,6 +117,7 @@ async function handleAssign() {
   submitting.value = true; formError.value = '';
   try {
     await store.updateIncident(incidentId.value, { assigned_to: assignName.value.trim() });
+    await store.fetchIncident(incidentId.value);
     activeAction.value = null;
   } catch { /* handled */ }
   submitting.value = false;
@@ -126,6 +127,7 @@ async function handlePriority() {
   submitting.value = true;
   try {
     await store.updateIncident(incidentId.value, { priority: selectedPriority.value });
+    await store.fetchIncident(incidentId.value);
     activeAction.value = null;
   } catch { /* handled */ }
   submitting.value = false;
@@ -135,6 +137,8 @@ async function handleStatus() {
   submitting.value = true;
   try {
     await store.updateIncident(incidentId.value, { status: selectedStatus.value });
+    // Refresh incident data to reflect new status
+    await store.fetchIncident(incidentId.value);
     if (selectedStatus.value === 'RESOLVED') activeAction.value = 'resolve';
     else activeAction.value = null;
   } catch { /* handled */ }
@@ -159,6 +163,7 @@ async function handleResolve() {
   submitting.value = true; formError.value = '';
   try {
     await store.resolveIncident(incidentId.value, { resolution_notes: resolveNote.value.trim(), resolved_by: resolveBy.value.trim() });
+    await store.fetchIncident(incidentId.value);
     resolveNote.value = ''; resolveBy.value = '';
     activeAction.value = null;
   } catch { /* handled */ }
@@ -273,17 +278,17 @@ onMounted(() => {
           <v-icon start size="small">mdi-image-multiple</v-icon>
           รูปภาพ ({{ images.length }})
         </div>
-        <div class="d-flex flex-wrap ga-2">
-          <v-img
-            v-for="img in images"
-            :key="img.id"
-            :src="'data:' + img.mime_type + ';base64,' + img.data"
-            cover
-            class="rounded cursor-pointer"
-            style="width: 120px; height: 120px;"
-            @click="openImage(img)"
-          />
-        </div>
+        <v-row>
+          <v-col v-for="img in images" :key="img.id" cols="4" sm="3" md="2">
+            <v-img
+              :src="'data:' + img.mime_type + ';base64,' + img.data"
+              aspect-ratio="1"
+              cover
+              class="rounded cursor-pointer"
+              @click="openImage(img)"
+            />
+          </v-col>
+        </v-row>
       </v-card>
 
       <!-- ── Flow Actions ── -->
