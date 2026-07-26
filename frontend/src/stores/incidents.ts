@@ -7,6 +7,7 @@ import type {
   AddNoteData,
   ResolveIncidentData,
   ListIncidentsParams,
+  AnalyzeResult,
   Toast,
 } from '@/types';
 import * as api from '@/api/client';
@@ -21,6 +22,7 @@ export const useIncidentStore = defineStore('incidents', () => {
   const loading = ref(false);
   const currentLoading = ref(false);
   const submitting = ref(false);
+  const analyzing = ref(false);
   const error = ref<string | null>(null);
   const toasts = ref<Toast[]>([]);
 
@@ -75,6 +77,21 @@ export const useIncidentStore = defineStore('incidents', () => {
       addToast(e.message, 'error');
     } finally {
       currentLoading.value = false;
+    }
+  }
+
+  async function analyzeText(text: string): Promise<AnalyzeResult | null> {
+    analyzing.value = true;
+    error.value = null;
+    try {
+      const res = await api.analyzeIncident(text);
+      return res.data || null;
+    } catch (e: any) {
+      error.value = e.message;
+      addToast(e.message, 'error');
+      return null;
+    } finally {
+      analyzing.value = false;
     }
   }
 
@@ -159,6 +176,7 @@ export const useIncidentStore = defineStore('incidents', () => {
     loading,
     currentLoading,
     submitting,
+    analyzing,
     error,
     toasts,
     // Getters
@@ -169,6 +187,7 @@ export const useIncidentStore = defineStore('incidents', () => {
     removeToast,
     fetchIncidents,
     fetchIncident,
+    analyzeText,
     createIncident,
     updateIncident,
     addNote,

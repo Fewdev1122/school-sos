@@ -1,6 +1,7 @@
 import type {
   ApiResponse,
   PaginatedResponse,
+  AnalyzeResponse,
   Incident,
   CreateIncidentData,
   UpdateIncidentData,
@@ -64,6 +65,13 @@ export async function addNote(id: string, data: AddNoteData): Promise<ApiRespons
   return request(`/incidents/${id}/notes`, {
     method: 'POST',
     body: JSON.stringify(data),
+  });
+}
+
+export async function analyzeIncident(text: string): Promise<AnalyzeResponse> {
+  return request('/analyze', {
+    method: 'POST',
+    body: JSON.stringify({ text }),
   });
 }
 

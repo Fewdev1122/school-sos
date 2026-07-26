@@ -2,10 +2,12 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import incidentsRouter from './routes/incidents';
+import analyzeRouter from './routes/analyze';
 import type { D1Database } from '@cloudflare/workers-types';
 
 type Bindings = {
   DB: D1Database;
+  AI: Ai;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -25,6 +27,7 @@ app.get('/api/health', (c) => {
 
 // Routes
 app.route('/api/v1/incidents', incidentsRouter);
+app.route('/api/v1/analyze', analyzeRouter);
 
 // 404 handler
 app.notFound((c) => {

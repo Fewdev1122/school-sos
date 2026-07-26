@@ -1,21 +1,17 @@
 <script setup lang="ts">
-import { ref, reactive } from 'vue';
+import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useIncidentStore } from '@/stores/incidents';
-import type { CreateIncidentData } from '@/types';
+import type { AnalyzeResult, CreateIncidentData } from '@/types';
 
 const router = useRouter();
 const store = useIncidentStore();
 
-const form = reactive<CreateIncidentData>({
-  title: '',
-  description: '',
-  location: '',
-  reporter_name: '',
-  reporter_contact: '',
-  incident_type: '',
-  priority: 'MEDIUM',
-});
+const rawText = ref('');
+const analyzing = ref(false);
+const analyzed = ref(false);
+const analysisResult = ref<AnalyzeResult | null>(null);
+const errors = ref('');
 
 const incidentTypes = [
   'อุบัติเหตุ',
@@ -34,38 +30,41 @@ const priorities = [
   { value: 'CRITICAL', title: 'วิกฤต', color: 'deep-orange' },
 ];
 
-const errors = ref<Record<string, string>>({});
-const formRef = ref<any>(null);
+async function handleAnalyze() {
+  if (!rawText.value.trim()) {
+    errors.value = 'กรุณากรอกรายละเอียดเหตุการณ์';
+    return;
+  }
+  errors.value = '';
+  analyzing.value = true;
+  analyzed.value = false;
+  analysisResult.value = null;
 
-function validate(): boolean {
-  const errs: Record<string, string> = {};
-
-  if (!form.title.trim()) errs.title = 'กรุณากรอกหัวข้อ';
-  else if (form.title.length > 200) errs.title = 'หัวข้อต้องไม่เกิน 200 ตัวอักษร';
-
-  if (!form.description.trim()) errs.description = 'กรุณากรอกรายละเอียด';
-  else if (form.description.length > 5000) errs.description = 'รายละเอียดต้องไม่เกิน 5000 ตัวอักษร';
-
-  if (!form.location.trim()) errs.location = 'กรุณากรอกสถานที่';
-  else if (form.location.length > 300) errs.location = 'สถานที่ต้องไม่เกิน 300 ตัวอักษร';
-
-  if (!form.reporter_name.trim()) errs.reporter_name = 'กรุณากรอกชื่อผู้แจ้ง';
-  else if (form.reporter_name.length > 100) errs.reporter_name = 'ชื่อต้องไม่เกิน 100 ตัวอักษร';
-
-  if (!form.reporter_contact.trim()) errs.reporter_contact = 'กรุณากรอกข้อมูลติดต่อ';
-  else if (form.reporter_contact.length > 100) errs.reporter_contact = 'ข้อมูลติดต่อต้องไม่เกิน 100 ตัวอักษร';
-
-  if (!form.incident_type) errs.incident_type = 'กรุณาเลือกประเภทเหตุ';
-
-  errors.value = errs;
-  return Object.keys(errs).length === 0;
+  const result = await store.analyzeText(rawText.value.trim());
+  if (result) {
+    analysisResult.value = result;
+    analyzed.value = true;
+  } else {
+    errors.value = 'ไม่สามารถวิเคราะห์เหตุการณ์ได้ กรุณาลองใหม่อีกครั้ง';
+  }
+  analyzing.value = false;
 }
 
-async function handleSubmit() {
-  if (!validate()) return;
+async function handleApprove() {
+  if (!analysisResult.value) return;
+
+  const data: CreateIncidentData = {
+    title: analysisResult.value.title,
+    description: analysisResult.value.description,
+    location: analysisResult.value.location,
+    reporter_name: analysisResult.value.reporter_name,
+    reporter_contact: analysisResult.value.reporter_contact,
+    incident_type: analysisResult.value.incident_type,
+    priority: analysisResult.value.priority,
+  };
 
   try {
-    const incident = await store.createIncident({ ...form });
+    const incident = await store.createIncident(data);
     if (incident) {
       router.push(`/incidents/${incident.id}`);
     }
@@ -74,15 +73,21 @@ async function handleSubmit() {
   }
 }
 
-function resetForm() {
-  form.title = '';
-  form.description = '';
-  form.location = '';
-  form.reporter_name = '';
-  form.reporter_contact = '';
-  form.incident_type = '';
-  form.priority = 'MEDIUM';
-  errors.value = {};
+function handleEdit() {
+  analyzed.value = false;
+}
+
+function handleReset() {
+  rawText.value = '';
+  analyzed.value = false;
+  analysisResult.value = null;
+  errors.value = '';
+}
+
+function updateAnalyzedField(field: keyof AnalyzeResult, value: string) {
+  if (analysisResult.value) {
+    (analysisResult.value as any)[field] = value;
+  }
 }
 </script>
 
@@ -96,101 +101,43 @@ function resetForm() {
         </v-card-title>
 
         <v-card-text class="pa-0">
-          <v-form @submit.prevent="handleSubmit" ref="formRef">
-            <!-- Title -->
-            <v-text-field
-              v-model="form.title"
-              label="หัวข้อ *"
-              placeholder="ระบุหัวข้อเหตุการณ์"
-              :error-messages="errors.title"
-              variant="outlined"
-              density="comfortable"
-              class="mb-3"
-              clearable
-            />
+          <!-- Step 1: Raw text input -->
+          <template v-if="!analyzed">
+            <p class="text-body-2 text-medium-emphasis mb-3">
+              เล่ารายละเอียดเหตุการณ์ที่เกิดขึ้น ระบบ AI จะวิเคราะห์และแยกข้อมูลให้อัตโนมัติ
+            </p>
 
-            <!-- Description -->
             <v-textarea
-              v-model="form.description"
-              label="รายละเอียด *"
-              placeholder="อธิบายเหตุการณ์ที่เกิดขึ้น"
-              :error-messages="errors.description"
+              v-model="rawText"
+              label="เล่าเหตุการณ์ *"
+              placeholder="เช่น: เมื่อเวลา 10.00 น. มีนักเรียนทะเลาะวิวาทกันที่หน้าอาคารเรียน ชั้น ม.5/2 ..."
+              :error-messages="errors"
               variant="outlined"
               density="comfortable"
-              rows="4"
+              rows="6"
               class="mb-3"
               clearable
+              auto-grow
             />
 
-            <!-- Location -->
-            <v-text-field
-              v-model="form.location"
-              label="สถานที่ *"
-              placeholder="อาคาร / ชั้น / ห้อง"
-              :error-messages="errors.location"
-              variant="outlined"
-              density="comfortable"
+            <v-alert
+              v-if="errors && !rawText.trim()"
+              type="warning"
+              variant="tonal"
               class="mb-3"
-              clearable
-            />
+              density="compact"
+            >
+              {{ errors }}
+            </v-alert>
 
-            <!-- Reporter Name -->
-            <v-text-field
-              v-model="form.reporter_name"
-              label="ชื่อผู้แจ้ง *"
-              placeholder="ชื่อ-นามสกุล"
-              :error-messages="errors.reporter_name"
-              variant="outlined"
-              density="comfortable"
-              class="mb-3"
-              clearable
-            />
-
-            <!-- Reporter Contact -->
-            <v-text-field
-              v-model="form.reporter_contact"
-              label="ข้อมูลติดต่อ *"
-              placeholder="เบอร์โทร / อีเมล"
-              :error-messages="errors.reporter_contact"
-              variant="outlined"
-              density="comfortable"
-              class="mb-3"
-              clearable
-            />
-
-            <!-- Incident Type -->
-            <v-select
-              v-model="form.incident_type"
-              :items="incidentTypes"
-              label="ประเภทเหตุ *"
-              :error-messages="errors.incident_type"
-              variant="outlined"
-              density="comfortable"
-              class="mb-3"
-              clearable
-            />
-
-            <!-- Priority -->
-            <v-label class="mb-2 font-weight-medium">ระดับความรุนแรง</v-label>
-            <v-radio-group v-model="form.priority" inline class="mb-4">
-              <v-radio
-                v-for="p in priorities"
-                :key="p.value"
-                :label="p.title"
-                :value="p.value"
-                :color="p.color"
-              />
-            </v-radio-group>
-
-            <!-- Actions -->
             <v-row class="mt-2">
               <v-col cols="6">
                 <v-btn
                   variant="outlined"
                   block
                   size="large"
-                  @click="resetForm"
-                  :disabled="store.submitting"
+                  @click="handleReset"
+                  :disabled="analyzing"
                 >
                   ล้าง
                 </v-btn>
@@ -201,16 +148,156 @@ function resetForm() {
                   variant="elevated"
                   block
                   size="large"
-                  @click="handleSubmit"
-                  :loading="store.submitting"
-                  :disabled="store.submitting"
+                  @click="handleAnalyze"
+                  :loading="analyzing"
+                  :disabled="analyzing || !rawText.trim()"
                 >
-                  <v-icon start>mdi-send</v-icon>
-                  แจ้งเหตุ
+                  <v-icon start>mdi-robot</v-icon>
+                  วิเคราะห์ด้วย AI
                 </v-btn>
               </v-col>
             </v-row>
-          </v-form>
+          </template>
+
+          <!-- Step 2: AI analysis preview -->
+          <template v-else-if="analysisResult">
+            <v-alert
+              type="success"
+              variant="tonal"
+              class="mb-4"
+              density="compact"
+              closable
+            >
+              ✅ AI วิเคราะห์เหตุการณ์เรียบร้อย — กรุณาตรวจสอบข้อมูลก่อนส่ง
+            </v-alert>
+
+            <v-form @submit.prevent="handleApprove">
+              <!-- Title -->
+              <v-text-field
+                :model-value="analysisResult.title"
+                @update:model-value="(v: string) => updateAnalyzedField('title', v)"
+                label="หัวข้อ"
+                variant="outlined"
+                density="comfortable"
+                class="mb-3"
+                clearable
+              />
+
+              <!-- Description -->
+              <v-textarea
+                :model-value="analysisResult.description"
+                @update:model-value="(v: string) => updateAnalyzedField('description', v)"
+                label="รายละเอียด"
+                variant="outlined"
+                density="comfortable"
+                rows="3"
+                class="mb-3"
+                auto-grow
+              />
+
+              <!-- Location -->
+              <v-text-field
+                :model-value="analysisResult.location"
+                @update:model-value="(v: string) => updateAnalyzedField('location', v)"
+                label="สถานที่"
+                variant="outlined"
+                density="comfortable"
+                class="mb-3"
+                clearable
+              />
+
+              <!-- Reporter Name -->
+              <v-text-field
+                :model-value="analysisResult.reporter_name"
+                @update:model-value="(v: string) => updateAnalyzedField('reporter_name', v)"
+                label="ชื่อผู้แจ้ง"
+                variant="outlined"
+                density="comfortable"
+                class="mb-3"
+                clearable
+              />
+
+              <!-- Reporter Contact -->
+              <v-text-field
+                :model-value="analysisResult.reporter_contact"
+                @update:model-value="(v: string) => updateAnalyzedField('reporter_contact', v)"
+                label="ข้อมูลติดต่อ"
+                variant="outlined"
+                density="comfortable"
+                class="mb-3"
+                clearable
+              />
+
+              <!-- Incident Type -->
+              <v-select
+                :model-value="analysisResult.incident_type"
+                @update:model-value="(v: any) => updateAnalyzedField('incident_type', v || 'เหตุร้ายแรงอื่นๆ')"
+                :items="incidentTypes"
+                label="ประเภทเหตุ"
+                variant="outlined"
+                density="comfortable"
+                class="mb-3"
+              />
+
+              <!-- Priority -->
+              <v-label class="mb-2 font-weight-medium">ระดับความรุนแรง</v-label>
+              <v-radio-group
+                :model-value="analysisResult.priority"
+                @update:model-value="(v: any) => updateAnalyzedField('priority', v || 'MEDIUM')"
+                inline
+                class="mb-4"
+              >
+                <v-radio
+                  v-for="p in priorities"
+                  :key="p.value"
+                  :label="p.title"
+                  :value="p.value"
+                  :color="p.color"
+                />
+              </v-radio-group>
+
+              <!-- Actions -->
+              <v-row class="mt-2">
+                <v-col cols="4">
+                  <v-btn
+                    variant="outlined"
+                    block
+                    size="large"
+                    @click="handleEdit"
+                    :disabled="store.submitting"
+                  >
+                    <v-icon start>mdi-pencil</v-icon>
+                    แก้ไข
+                  </v-btn>
+                </v-col>
+                <v-col cols="4">
+                  <v-btn
+                    variant="outlined"
+                    block
+                    size="large"
+                    @click="handleReset"
+                    :disabled="store.submitting"
+                  >
+                    ยกเลิก
+                  </v-btn>
+                </v-col>
+                <v-col cols="4">
+                  <v-btn
+                    color="primary"
+                    variant="elevated"
+                    block
+                    size="large"
+                    @click="handleApprove"
+                    :loading="store.submitting"
+                    :disabled="store.submitting"
+                  >
+                    <v-icon start>mdi-check-circle</v-icon>
+                    อนุมัติ
+                  </v-btn>
+                </v-col>
+              </v-row>
+            </v-form>
+          </template>
         </v-card-text>
       </v-card>
     </v-col>

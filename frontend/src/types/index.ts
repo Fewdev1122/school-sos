@@ -92,6 +92,23 @@ export interface ResolveIncidentData {
   resolved_by: string;
 }
 
+// ── AI Analyze ──
+export interface AnalyzeResult {
+  title: string;
+  description: string;
+  location: string;
+  reporter_name: string;
+  reporter_contact: string;
+  incident_type: string;
+  priority: IncidentPriority;
+}
+
+export interface AnalyzeResponse {
+  success: boolean;
+  data: AnalyzeResult;
+  original_text: string;
+}
+
 // ── Query ──
 export interface ListIncidentsParams {
   status?: IncidentStatus;
