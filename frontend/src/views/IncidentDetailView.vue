@@ -127,8 +127,11 @@ async function handleStatus() {
     await store.updateIncident(incidentId.value, { status: selectedStatus.value });
     // Refresh incident data to reflect new status
     await store.fetchIncident(incidentId.value);
-    if (selectedStatus.value === 'RESOLVED') activeAction.value = 'resolve';
-    else activeAction.value = null;
+    // Keep panel open so user can advance through statuses without re-clicking
+    if (selectedStatus.value === 'RESOLVED') {
+      activeAction.value = 'resolve';
+    }
+    // If now IN_PROGRESS the resolve button becomes available — user can click it next
   } catch { /* handled */ }
   submitting.value = false;
 }
